@@ -2,6 +2,7 @@ import os
 
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import streamlit as st
 
 # --- PAGE CONFIGURATION ---
@@ -81,54 +82,161 @@ with st.sidebar:
 
     st.info("💡 **Pro-tip:** Use `st.sidebar` to keep controls organized.")
 
-# 4. MAIN CONTENT - DATA LOADING
+# 4. MAIN CONTENT - Create tabs that are always visible
+tab1, tab2, tab3 = st.tabs(["📊 Data Analysis", "🗺️ Santa Map", "📈 Statistics"])
+
+# Helper function to create Santa map
+def create_santa_map():
+    """Creates the US map with animated Santa GIF"""
+    st.subheader("🎅 Santa's Journey Across America")
+    
+    # Create a base map of the US using Plotly
+    fig = go.Figure()
+    
+    # Add a simple US outline using scattergeo (centered on continental US)
+    fig.add_trace(go.Scattergeo(
+        lon=[-125, -66, -66, -125, -125],  # US bounding box
+        lat=[25, 25, 49, 49, 25],
+        mode='lines',
+        line=dict(width=0, color='rgba(0,0,0,0)'),
+        showlegend=False,
+        hoverinfo='skip'
+    ))
+    
+    # Configure the map layout
+    fig.update_geos(
+        visible=True,
+        resolution=50,
+        scope='usa',
+        showcountries=False,
+        showcoastlines=True,
+        coastlinecolor="LightGray",
+        showland=True,
+        landcolor="WhiteSmoke",
+        showocean=True,
+        oceancolor="LightBlue",
+        projection_type='albers usa',
+        lonaxis_range=[-125, -66],
+        lataxis_range=[25, 49]
+    )
+    
+    fig.update_layout(
+        height=600,
+        margin=dict(l=0, r=0, t=0, b=0),
+        geo=dict(
+            bgcolor='rgba(0,0,0,0)',
+            lakecolor='LightBlue',
+            rivercolor='LightBlue'
+        )
+    )
+    
+    # Santa GIF URL
+    santa_gif_url = "https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExNnJ1eTJpaWlyaTVkZ3E1anZlamExOWM5OHZjbWhoN3ZvemVjYjl3NSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/mATqoqwcLzqNKkLcOR/giphy.gif"
+    
+    # Create a container with Santa positioned to overlay the map
+    # Using a wrapper div that will be positioned relative to the map
+    santa_overlay_html = f"""
+    <div style="
+        position: relative;
+        width: 100%;
+        margin-bottom: -600px;
+        height: 600px;
+        z-index: 1000;
+        pointer-events: none;
+    ">
+        <div id="santa-flyer" style="
+            position: absolute;
+            top: 50%;
+            left: 95%;
+            width: 80px;
+            height: 80px;
+            pointer-events: none;
+            z-index: 1001;
+            animation: santaFlyEastWest 15s linear infinite;
+            transform: translate(-50%, -50%);
+        ">
+            <img src="{santa_gif_url}" alt="🎅 Santa flying east to west" style="width: 100%; height: 100%; object-fit: contain;" />
+        </div>
+    </div>
+    
+    <style>
+    @keyframes santaFlyEastWest {{
+        0% {{ 
+            left: 95%;
+        }}
+        100% {{ 
+            left: 5%;
+        }}
+    }}
+    </style>
+    """
+    
+    st.markdown(santa_overlay_html, unsafe_allow_html=True)
+    
+    # Display the map (600px height) - Santa overlay positioned above it
+    st.plotly_chart(fig, use_container_width=True, key="santa_map")
+
+# Load data if file uploaded
+df = None
+filtered_df = None
 if uploaded_file is not None:
     # Determine file type and load accordingly
     if uploaded_file.name.endswith(".csv"):
         df = pd.read_csv(uploaded_file)
     else:
         df = pd.read_json(uploaded_file)
+    filtered_df = df
 
-    st.subheader("Data Overview")
+# TAB 2: Santa Map (always visible)
+with tab2:
+    create_santa_map()
+    
+    # If file is uploaded, also show data points
+    if df is not None and "Latitude" in df.columns and "Longitude" in df.columns:
+        st.divider()
+        st.subheader("Your Data Points")
+        st.map(filtered_df, latitude="Latitude", longitude="Longitude")
 
-    # 5. DATA DISPLAY (Command: st.dataframe)
-    st.write(f"Showing {len(df)} rows:")
-    st.dataframe(df, use_container_width=True)
-
-    # 6. FILTERING (Command: st.selectbox, st.slider)
-    st.divider()
-    st.subheader("Interactive Analysis")
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        if "Category" in df.columns:
-            categories = df["Category"].unique()
-            selected_cat = st.multiselect(
-                "Filter by Category", options=categories, default=categories
-            )
-            filtered_df = df[df["Category"].isin(selected_cat)]
-        else:
-            filtered_df = df
-            st.warning("No 'Category' column found for filtering.")
-
-    with col2:
-        if "Value" in df.columns:
-            min_val, max_val = int(df["Value"].min()), int(df["Value"].max())
-            val_range = st.slider(
-                "Filter by Value Range", min_val, max_val, (min_val, max_val)
-            )
-            filtered_df = filtered_df[
-                (filtered_df["Value"] >= val_range[0])
-                & (filtered_df["Value"] <= val_range[1])
-            ]
-
-    # 7. VISUALIZATION (Command: st.plotly_chart)
-    st.write(f"Filtered results: {len(filtered_df)} rows")
-
-    tab1, tab2, tab3 = st.tabs(["📊 Chart", "🗺️ Map", "📈 Statistics"])
-
+# TAB 1 & 3: Data Analysis and Statistics (only when file uploaded)
+if uploaded_file is not None:
     with tab1:
+        st.subheader("Data Overview")
+        st.write(f"Showing {len(df)} rows:")
+        st.dataframe(df, use_container_width=True)
+
+        # FILTERING
+        st.divider()
+        st.subheader("Interactive Analysis")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            if "Category" in df.columns:
+                categories = df["Category"].unique()
+                selected_cat = st.multiselect(
+                    "Filter by Category", options=categories, default=categories
+                )
+                filtered_df = df[df["Category"].isin(selected_cat)]
+            else:
+                filtered_df = df
+                st.warning("No 'Category' column found for filtering.")
+
+        with col2:
+            if "Value" in df.columns:
+                min_val, max_val = int(df["Value"].min()), int(df["Value"].max())
+                val_range = st.slider(
+                    "Filter by Value Range", min_val, max_val, (min_val, max_val)
+                )
+                filtered_df = filtered_df[
+                    (filtered_df["Value"] >= val_range[0])
+                    & (filtered_df["Value"] <= val_range[1])
+                ]
+            else:
+                filtered_df = df
+
+        # VISUALIZATION
+        st.write(f"Filtered results: {len(filtered_df)} rows")
+
         if not filtered_df.empty:
             fig = px.bar(
                 filtered_df,
@@ -141,41 +249,35 @@ if uploaded_file is not None:
         else:
             st.write("No data available for the current filters.")
 
-    with tab2:
-        if "Latitude" in df.columns and "Longitude" in df.columns:
-            # 8. MAP (Command: st.map)
-            st.map(filtered_df, latitude="Latitude", longitude="Longitude")
-        else:
-            st.info(
-                "To see a map, ensure your data has 'Latitude' and 'Longitude' columns."
-            )
-
     with tab3:
         st.write("Summary Statistics:")
         st.write(filtered_df.describe())
 
 else:
-    st.info(
-        "Please upload a file to get started. You can find sample data in the `sample_data` folder."
-    )
+    # No file uploaded - show placeholder content in tabs
+    with tab1:
+        st.info(
+            "Please upload a file to get started. You can find sample data in the `sample_data` folder."
+        )
+        if st.checkbox("Show Example Data"):
+            example_path = "sample_data/example.csv"
+            if os.path.exists(example_path):
+                df_example = pd.read_csv(example_path)
+                st.write("This is what `example.csv` looks like:")
+                st.dataframe(df_example.head())
+                if "Latitude" in df_example.columns and "Longitude" in df_example.columns:
+                    st.map(df_example, latitude="Latitude", longitude="Longitude")
+                else:
+                    st.warning("No 'Latitude' or 'Longitude' columns found for mapping.")
+            else:
+                st.error("Example file not found.")
 
-    # Show example of how to load local data
-    if st.checkbox("Show Example Data"):
-        example_path = "sample_data/example.csv"
-        if os.path.exists(example_path):
-            df_example = pd.read_csv(example_path)
-            st.write("This is what `example.csv` looks like:")
-            st.dataframe(df_example.head())
-            # if "Latitude" in df_example.columns and "Longitude" in df_example.columns:
-            #     st.map(df_example, latitude="Latitude", longitude="Longitude")
-            # else:
-            #     st.warning("No 'Latitude' or 'Longitude' columns found for mapping.")
-        else:
-            st.error("Example file not found.")
+    with tab3:
+        st.info("Upload a file to see statistics here.")
 
 # --- FOOTER ---
 st.divider()
-st.caption("Built with Streamlit • 2025 Researcher Workshop")
+st.caption("Built by Salil • 2025 Researcher Workshop")
 
 # --- SUMMARY OF COMMON COMMANDS ---
 # 1. st.write() - The Swiss Army knife: prints text, dataframes, objects.
